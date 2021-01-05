@@ -1,0 +1,161 @@
+<plugin>
+
+    
+
+    <div class="mobile-header">
+        <div class="mh-closing-x iconfont clickable" onclick="W.plugins['windy-plugin-adsb'].close()">}</div>
+        openAIP Airspaces:
+    </div>
+	<div id="adsb-plugin-airspace-container" class="plugin-content" style="overflow-y:hidden">
+	</div>
+
+<script>
+
+    import $ from '@windy/$';
+    import map from '@windy/map';
+    import picker from '@windy/picker';
+    import rs from '@windy/rootScope';
+    import pickerT from '@windy/windy-plugin-module-pickerTools';
+    import ib from '@windy/windy-plugin-module-infobox';
+    import asp from '@windy/windy-plugin-module-airspaces';
+
+    //lastOpened set to true when plugin opens,  use to determine whether picker (or other actions) should be active.
+    //Will be set false by W.plugins.plugin,  when another windy-plugin plugin opens
+    this.lastOpened=true;
+
+    //move the logo to a better position on tablet
+    if (rs.isTablet){$("#logo").style.left="100%"; $("#logo").style.marginLeft="-150px";}
+
+    //remove the "open in app" button on mobile
+    if($("#open-in-app")) $("#open-in-app").style.display="none";
+
+    //box lower left screen with buttons etc,   moves with the calendar.
+    this.refs.infobox=ib(
+        //html to fill the info box:
+        "<div id='open-airspace-adsb' style='display:inline-block; padding:3px; background-color:rgba(0,0,0,0.5); border:1px solid black; border-radius:4px'>Show Airspaces</div>"
+        ,"open-airspace-adsb" //id of the button which will open the left hand pane
+        ,this  //this plugin ref
+        ,true  //true=hide this box when plugin opens
+    );
+
+    //deselect airspaces if another plugin is openend. The W.plugins.plugin looks for this fx in each of the loaded plugins.
+    this.onOtherPluginOpened=()=>{
+        if (this.lastOpened) asp.clearAsp();
+    }
+
+    this.onopen=()=>{
+        //append airspace list to selected div
+        asp.appendAspListToDiv("adsb-plugin-airspace-container");
+        //check if picker already open and fill
+        if (pickerT.isOpen()) pickerT.fillRightDiv(asp.findAsp(picker.getParams()).txt);
+    }
+
+    //Picker listeners. Active only if this is the last plugin opened.  (Unfortunately windy does not allow to unsubscribe form the picker AFAICT)
+    picker.on('pickerOpened',c=>{
+        if(this.lastOpened)   {
+            if (!rs.isMobile)  pickerT.fillRightDiv(asp.findAsp(c).txt);
+            else setTimeout(pickerT.fillRightDiv,200,asp.findAsp(picker.getParams()).txt);
+            ////on mobile the coords passed by "pickerOpened" =  the coordinates clicked on map and NOT the picker coords.
+        }
+    });
+    picker.on('pickerMoved',c=>{
+        if(this.lastOpened)  pickerT.fillRightDiv(asp.findAsp(c).txt);
+    });
+    picker.on('pickerClosed',()=>{
+        if (this.lastOpened) asp.clearAsp();
+    });
+    pickerT.drag(c=>{
+        if(this.lastOpened)  pickerT.fillRightDiv(asp.findAsp(c).txt);
+    },350);  //every 350ms: callbackfx is called
+
+
+
+
+    ///////////////////////////////////////
+    /////////// adsb section //////////////
+    ///////////////////////////////////////
+    ///// Michael Haberler wrote this /////
+    ///////////////////////////////////////
+
+    var wssUri = "wss://chris:eihe8UdaemaeJie6@data.mah.priv.at/adsb/";
+
+    var markers = {};
+
+    //aircraft svg
+    var planeSVG=L.divIcon({html:
+        `<div  style=" opacity:1; position:absolute; left:-10px; top:-10px; width:20px; height:20px; background-color:transparent; ">
+        <svg class="plane-svg" height="20" width="20" style="position:absolute; transform:rotate(0deg)">
+        <path fill-opacity="0" stroke-width="1" stroke="white" d= "M9, 3 10,3 11,3 12,5 12,9 13,10 18,10 19,11 19,13 11,13 11,17 12,18 13,18 14,19 14,20 6, 20 6, 19 7, 18 8, 18 9, 17 9, 13 1, 13 1, 12 1, 11 2, 10 7, 10 8, 9 8, 5 9, 3 10,3 z" />
+        </svg>
+        </div>`
+    ,iconAnchor:[0,0]});
+
+        // establish websocket connection
+        var ws = new WebSocket(wssUri);
+
+        ws.onopen = function() {
+            // send an inital bbox update
+            updateBBox();
+        };
+
+        ws.onclose = function() {
+            console.log("Closed");
+        };
+
+        ws.onmessage = function(event) {
+            let feature = JSON.parse(event.data);
+            // feature comes in as:
+            // {
+            //   "type": "Feature",
+            //   "geometry": {
+            //     "type": "Point",
+            //     "coordinates": [15.79151, 46.70595, 34000]
+            //   },
+            //   "properties": {
+            //     "icao24": "4BB264",
+            //     "callsign": "THY3UL",
+            //     "squawk": "3273",
+            //     "time": 1609858269.40257,
+            //     "speed": 447.0,
+            //     "vspeed": 352,
+            //     "heading": 289.0
+            //   }
+            // }
+
+            if (feature.geometry.type == "Point") {
+                let {icao24:icao, speed, heading}  = feature.properties;
+                let [lng,lat,alt] = feature.geometry.coordinates;
+                if (markers[icao] === void 0) {
+                    // first seen this plane
+                    markers[icao] = L.marker([lat,lng],{icon:planeSVG})
+                        .bindPopup(`ICAO: ${icao}<br>Alt: ${alt}<br>Speed: ${speed}`)
+                        .addTo(map);
+                    $(".plane-svg",markers[icao]._icon).style.transform=`rotate(${heading}deg)`;
+                } else {
+                    // already seen, just move it
+                    markers[icao].setLatLng([lat,lng]);
+                    markers[icao]._popup.setContent(`ICAO: ${icao}<br>Alt: ${alt}<br>Speed: ${speed}`);
+                    $(".plane-svg",markers[icao]._icon).style.transform=`rotate(${heading}deg)`;
+                }
+                markers[icao].properties = feature.properties;
+                markers[icao].altitude = alt;
+            }
+        };
+
+        // dynamically send a bounding box update to the server
+        function updateBBox() {
+            let b = map.getBounds();
+            let bbox = {}
+            bbox.min_latitude =  b.getSouth();
+            bbox.max_latitude =  b.getNorth();
+            bbox.min_longitude = b.getWest();
+            bbox.max_longitude = b.getEast();
+
+            console.log("updating bbox:", bbox);
+            ws.send(JSON.stringify(bbox));
+        }
+        map.on('moveend zoomend resetview', updateBBox);
+
+
+</script>
+</plugin>

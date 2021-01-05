@@ -1,0 +1,50 @@
+@import 'dev/variables.less';
+@import '_plugins/airspaces.less';
+
+@widthOfMyPlugin: 200px;
+
+.onwindy-plugin-adsb {
+	.left-border {
+        left: @widthOfMyPlugin;
+    }
+	#search {
+		display: none;
+	}
+}
+
+#windy-plugin-adsb {
+    position:absolute;
+	width: @widthOfMyPlugin;
+    height:100%;
+    .plugin-content {
+        border-radius:5px;
+        margin: 1px;
+        color: white;
+        background-color:rgba(0,0,0,0.7);
+    }
+}
+
+.plugin-airspaces-mobile{
+    top:220px !important;
+    bottom:95px !important;
+    height:auto !important;
+    width:100% !important;
+    transition: bottom 0.3s;
+    .closing-x{   //style the closing-x so that it is visible.  If plugin-mobile-fullscreen is used,  it will not be made display:none.
+        display:block;
+        right:0;
+    }
+
+}
+
+#device-mobile{
+    #bottom{
+        left:0px !important;
+    }
+    .mobile-calendar-expanded{
+        .plugin-airspaces-mobile{
+            bottom:135px !important;
+        }
+    }
+}
+
