@@ -1,6 +1,6 @@
 <plugin>
 
-    
+
 
     <div class="mobile-header">
         <div class="mh-closing-x iconfont clickable" onclick="W.plugins['windy-plugin-adsb'].close()">}</div>
@@ -18,6 +18,11 @@
     import pickerT from '@windy/windy-plugin-module-pickerTools';
     import ib from '@windy/windy-plugin-module-infobox';
     import asp from '@windy/windy-plugin-module-airspaces';
+
+   // import geobufDecode from './geobuf_decode.mjs'
+   // import Pbf from './Pbf.mjs'
+
+
 
     //lastOpened set to true when plugin opens,  use to determine whether picker (or other actions) should be active.
     //Will be set false by W.plugins.plugin,  when another windy-plugin plugin opens
@@ -77,7 +82,7 @@
     ///// Michael Haberler wrote this /////
     ///////////////////////////////////////
 
-    var wssUri = "wss://chris:eihe8UdaemaeJie6@data.mah.priv.at/adsb/";
+    var wssUri = "wss://user1:aVo8egai6ohphahYa8av3ho7sohzei8p@data.mah.priv.at/adsb/?options=geobuf";
 
     var markers = {};
 
@@ -90,20 +95,35 @@
         </div>`
     ,iconAnchor:[0,0]});
 
+
+    function connect(){
+
         // establish websocket connection
         var ws = new WebSocket(wssUri);
+        ws.binaryType = "arraybuffer";
+
+
+
+        var planePopup = L.popup();
 
         ws.onopen = function() {
+            console.log("OPENED");
             // send an inital bbox update
             updateBBox();
         };
 
         ws.onclose = function() {
-            console.log("Closed");
+            console.log("Closed, reconnect");
+            setTimeout(connect,3000);
         };
 
         ws.onmessage = function(event) {
-            let feature = JSON.parse(event.data);
+            //console.log("REVEIVED");
+            //console.log("e",event);
+             //var feature = geobuf.decode(new Pbf(new Uint8Array(msg.data)));
+            let feature = geobuf.decode(new Pbf(new Uint8Array(event.data)));//JSON.parse(event.data);
+            //console.log(feature)
+            //console.log(event.data);
             // feature comes in as:
             // {
             //   "type": "Feature",
@@ -122,24 +142,37 @@
             //   }
             // }
 
-            if (feature.geometry.type == "Point") {
-                let {icao24:icao, speed, heading}  = feature.properties;
-                let [lng,lat,alt] = feature.geometry.coordinates;
+            if (feature.geometry && feature.geometry.type == "Point") {
+                let {i:icao, v:speed, s:squawk, c:callsign, h:heading,  a:alt}  = feature.properties;
+                let [lng,lat] = feature.geometry.coordinates;
                 if (markers[icao] === void 0) {
                     // first seen this plane
-                    markers[icao] = L.marker([lat,lng],{icon:planeSVG})
-                        .bindPopup(`ICAO: ${icao}<br>Alt: ${alt}<br>Speed: ${speed}`)
+                    markers[icao] = L.marker([lat,lng],{icon:planeSVG});
+                    console.log("adding",icao);
+                    Object.assign( markers[icao], {icao, alt, speed, callsign, heading, squawk});
+                    markers[icao].on("click",  (e) =>{
+                            let t = e.target;
+                            console.log("T",t);
+                            planePopup
+                                .setLatLng(e.latlng)
+                                .setContent(`ICAO: ${t.icao}<br>Callsign: ${t.callsign}<br>Alt: ${t.alt}<br>Speed: ${t.speed},  <br>Squawk: ${t.squawk}  `)
+                                .openOn(map);
+                            planePopup.icao=icao;
+                        })
                         .addTo(map);
                     $(".plane-svg",markers[icao]._icon).style.transform=`rotate(${heading}deg)`;
                 } else {
-                    // already seen, just move it
+                    // already seen, just move it and update properties.
                     markers[icao].setLatLng([lat,lng]);
-                    markers[icao]._popup.setContent(`ICAO: ${icao}<br>Alt: ${alt}<br>Speed: ${speed}`);
+                    Object.assign(markers[icao],{speed, heading, alt});
                     $(".plane-svg",markers[icao]._icon).style.transform=`rotate(${heading}deg)`;
                 }
-                markers[icao].properties = feature.properties;
-                markers[icao].altitude = alt;
+                if (planePopup.icao===icao) {
+                    //checkif popup already opened for a plane, then update the content.
+                    planePopup.setContent(`ICAO: ${icao}<br>Callsign: ${callsign}<br>Alt: ${alt}<br>Speed: ${speed}<br>Squawk: ${squawk}`)
+                }
             }
+            if(!feature.geometry)console.error("received a feature without geometry property",  JSON.stringify(feature));
         };
 
         // dynamically send a bounding box update to the server
@@ -153,9 +186,22 @@
 
             console.log("updating bbox:", bbox);
             ws.send(JSON.stringify(bbox));
+
+            //remove markers out of bounds
+            for (let p in markers){
+                if(  !b.contains(markers[p].getLatLng())  ){
+                    markers[p].remove();
+                    delete markers[p];
+                }
+            }
+
+
         }
         map.on('moveend zoomend resetview', updateBBox);
 
+    }
+
+    connect();
 
 </script>
 </plugin>
