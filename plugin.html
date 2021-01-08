@@ -82,7 +82,10 @@
     ///// Michael Haberler wrote this /////
     ///////////////////////////////////////
 
-    var wssUri = "wss://user1:aVo8egai6ohphahYa8av3ho7sohzei8p@data.mah.priv.at/adsb/?options=geobuf";
+    //var wssUri = "wss://user1:aVo8egai6ohphahYa8av3ho7sohzei8p@data.mah.priv.at/adsb/?options=geobuf";
+    var wssUri = "wss://data.mah.priv.at/adsb/?token="
+    let token = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c3IiOiJ3aW5keSIsImR1ciI6OTAwLCJleHAiOjE2NDA5MDg4MDAuMCwiaXNzIjoidXJuOm1haC5wcml2LmF0IiwiYXVkIjpbImFkc2ItZ2VvYnVmIiwiYWRzYi1qc29uIl0sImlhdCI6MTYxMDA1NTI5MSwicnVpIjozMH0.-2pHLSXVNOxrRlK3iZ6GF9IJRWIl7MMNDKit4HGug_0';
+
 
     var markers = {};
 
@@ -98,8 +101,10 @@
 
     function connect(){
 
+
         // establish websocket connection
-        var ws = new WebSocket(wssUri);
+        var ws = new WebSocket(wssUri + token, ['adsb-geobuf']);
+
         ws.binaryType = "arraybuffer";
 
 
@@ -170,6 +175,7 @@
                 if (planePopup.icao===icao) {
                     //checkif popup already opened for a plane, then update the content.
                     planePopup.setContent(`ICAO: ${icao}<br>Callsign: ${callsign}<br>Alt: ${alt}<br>Speed: ${speed}<br>Squawk: ${squawk}`)
+                    planePopup.setLatLng(markers[icao].getLatLng());
                 }
             }
             if(!feature.geometry)console.error("received a feature without geometry property",  JSON.stringify(feature));
