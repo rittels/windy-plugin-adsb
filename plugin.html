@@ -99,15 +99,15 @@
     ,iconAnchor:[0,0]});
 
 
-    function connect(){
+    let removeStaleMarkers;
 
+
+    function connect(){
 
         // establish websocket connection
         var ws = new WebSocket(wssUri + token, ['adsb-geobuf']);
 
         ws.binaryType = "arraybuffer";
-
-
 
         var planePopup = L.popup();
 
@@ -115,20 +115,29 @@
             console.log("OPENED");
             // send an inital bbox update
             updateBBox();
+
+            removeStaleMarkers = setInterval(()=>{
+                let now = Date.now();
+                for (let p in markers){
+                    if (markers[p].ts  < now - 15000) {
+                        console.log("removing",p, "not updated for (sec):", (now-markers[p].ts) /1000);
+                        markers[p].remove();
+                        delete markers[p];
+                    }
+                }
+            },30000)
         };
 
         ws.onclose = function() {
             console.log("Closed, reconnect");
+            clearInterval(removeStaleMarkers);
             setTimeout(connect,3000);
         };
 
         ws.onmessage = function(event) {
-            //console.log("REVEIVED");
-            //console.log("e",event);
-             //var feature = geobuf.decode(new Pbf(new Uint8Array(msg.data)));
+
             let feature = geobuf.decode(new Pbf(new Uint8Array(event.data)));//JSON.parse(event.data);
-            //console.log(feature)
-            //console.log(event.data);
+
             // feature comes in as:
             // {
             //   "type": "Feature",
@@ -137,27 +146,28 @@
             //     "coordinates": [15.79151, 46.70595, 34000]
             //   },
             //   "properties": {
-            //     "icao24": "4BB264",
-            //     "callsign": "THY3UL",
-            //     "squawk": "3273",
-            //     "time": 1609858269.40257,
-            //     "speed": 447.0,
-            //     "vspeed": 352,
-            //     "heading": 289.0
+            //     "icao24": "4BB264",     =i
+            //     "callsign": "THY3UL",   =c
+            //     "squawk": "3273",       =s
+            //     "time": 1609858269.40257,   =t
+            //     "speed": 447.0,         =v
+            //     "vspeed": 352,          =r
+            //     "heading": 289.0        =h
             //   }
             // }
 
             if (feature.geometry && feature.geometry.type == "Point") {
                 let {i:icao, v:speed, s:squawk, c:callsign, h:heading,  a:alt}  = feature.properties;
+                let ts=Date.now();
                 let [lng,lat] = feature.geometry.coordinates;
                 if (markers[icao] === void 0) {
                     // first seen this plane
                     markers[icao] = L.marker([lat,lng],{icon:planeSVG});
-                    console.log("adding",icao);
-                    Object.assign( markers[icao], {icao, alt, speed, callsign, heading, squawk});
+                    //console.log("adding",icao);
+                    Object.assign( markers[icao], {icao, alt, speed, callsign, heading, squawk, ts});
                     markers[icao].on("click",  (e) =>{
                             let t = e.target;
-                            console.log("T",t);
+                            //console.log("T",t);
                             planePopup
                                 .setLatLng(e.latlng)
                                 .setContent(`ICAO: ${t.icao}<br>Callsign: ${t.callsign}<br>Alt: ${t.alt}<br>Speed: ${t.speed},  <br>Squawk: ${t.squawk}  `)
@@ -171,6 +181,7 @@
                     markers[icao].setLatLng([lat,lng]);
                     Object.assign(markers[icao],{speed, heading, alt});
                     $(".plane-svg",markers[icao]._icon).style.transform=`rotate(${heading}deg)`;
+                    markers[icao].ts=ts;
                 }
                 if (planePopup.icao===icao) {
                     //checkif popup already opened for a plane, then update the content.
@@ -200,8 +211,6 @@
                     delete markers[p];
                 }
             }
-
-
         }
         map.on('moveend zoomend resetview', updateBBox);
 
