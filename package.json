@@ -1,6 +1,6 @@
 {
   "name": "windy-plugin-adsb",
-  "version": "0.0.2",
+  "version": "0.0.24",
   "description": "ADSB and Airspaces",
   "main": "dist/plugin.js",
   "scripts": {
