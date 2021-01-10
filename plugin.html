@@ -75,6 +75,49 @@
 
 
 
+    ////my own throttle///
+    /////////////////////
+
+    let throttle = (function(){
+        let ready=true, to=null;
+        return function(f,iv, delayStart){
+            var args = Array.prototype.slice.call(arguments).slice(3);
+
+            if(delayStart && to===null) {
+                ready=false;
+                to=setTimeout(()=>ready=true, iv);
+            }
+
+            if (ready){
+                f.apply(null, args);
+                ready=false;
+                clearTimeout(to);
+                setTimeout(()=>{
+                    ready=true;
+                    to=setTimeout(()=>{
+                        f.apply(null,args);
+                        to=null;
+                    },iv);
+                },iv)
+            }
+        }
+    })()
+
+
+
+    let arrow= L.divIcon( {html:
+        "<div class='plane-svg' style='position:absolute; width: 0; height: 0; left:-2px; top:-4px; border-left: 2px solid transparent; border-right: 2px solid transparent; border-bottom: 8px solid white'\>  "
+        , iconAnchor:[0,0]});
+
+     //aircraft svg
+    var planeSVG=L.divIcon({html:
+        `<div  style=" opacity:1; position:absolute; left:-10px; top:-10px; width:20px; height:20px; background-color:transparent; ">
+        <svg class="plane-svg" height="20" width="20" style="position:absolute; transform:rotate(0deg)">
+        <path fill-opacity="0" stroke-width="1" stroke="white" d= "M9, 3 10,3 11,3 12,5 12,9 13,10 18,10 19,11 19,13 11,13 11,17 12,18 13,18 14,19 14,20 6, 20 6, 19 7, 18 8, 18 9, 17 9, 13 1, 13 1, 12 1, 11 2, 10 7, 10 8, 9 8, 5 9, 3 10,3 z" />
+        </svg>
+        </div>`
+    ,iconAnchor:[0,0]});
+
 
     ///////////////////////////////////////
     /////////// adsb section //////////////
@@ -89,18 +132,9 @@
 
     var markers = {};
 
-    //aircraft svg
-    var planeSVG=L.divIcon({html:
-        `<div  style=" opacity:1; position:absolute; left:-10px; top:-10px; width:20px; height:20px; background-color:transparent; ">
-        <svg class="plane-svg" height="20" width="20" style="position:absolute; transform:rotate(0deg)">
-        <path fill-opacity="0" stroke-width="1" stroke="white" d= "M9, 3 10,3 11,3 12,5 12,9 13,10 18,10 19,11 19,13 11,13 11,17 12,18 13,18 14,19 14,20 6, 20 6, 19 7, 18 8, 18 9, 17 9, 13 1, 13 1, 12 1, 11 2, 10 7, 10 8, 9 8, 5 9, 3 10,3 z" />
-        </svg>
-        </div>`
-    ,iconAnchor:[0,0]});
-
-
     let removeStaleMarkers;
 
+    let currentz=map.getZoom();
 
     function connect(){
 
@@ -160,9 +194,10 @@
                 let {i:icao, v:speed, s:squawk, c:callsign, h:heading,  a:alt}  = feature.properties;
                 let ts=Date.now();
                 let [lng,lat] = feature.geometry.coordinates;
+                let z=map.getZoom();
                 if (markers[icao] === void 0) {
                     // first seen this plane
-                    markers[icao] = L.marker([lat,lng],{icon:planeSVG});
+                    markers[icao] = L.marker([lat,lng],{icon:z<=5?arrow:planeSVG});
                     //console.log("adding",icao);
                     Object.assign( markers[icao], {icao, alt, speed, callsign, heading, squawk, ts});
                     markers[icao].on("click",  (e) =>{
@@ -212,7 +247,25 @@
                 }
             }
         }
-        map.on('moveend zoomend resetview', updateBBox);
+        map.on('moveend zoomend resetview', (e)=>{
+            throttle(updateBBox, 1000, true, e);
+        });
+
+
+        map.on('zoomend',e=>{
+            let z=e.target._zoom;
+
+            let setIcon=icon=>{
+                for(let p in markers){
+                    markers[p].setIcon(icon);
+                    $(".plane-svg",markers[p]._icon).style.transform=`rotate(${markers[p].heading}deg)`;
+                }
+            }
+
+            if(currentz>5 && z<=5) setIcon(arrow);
+            else if (currentz<=5 && z>5) setIcon(planeSVG);
+            currentz=z;
+        });
 
     }
 
